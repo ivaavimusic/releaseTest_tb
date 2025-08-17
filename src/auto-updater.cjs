@@ -392,7 +392,8 @@ function setupAutoUpdaterEvents() {
     updateDownloading = false;
     updateDownloaded = false;
     
-    sendStatusToWindow('error', errorMessage);
+    // Log error but don't show update window for API issues
+    log.error('Auto-updater error (not shown to user):', errorMessage);
   });
   
   autoUpdater.on('download-progress', (progressObj) => {
