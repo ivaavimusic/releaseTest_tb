@@ -1311,8 +1311,9 @@
                         <!-- RPC Providers Tab -->
                         <div class="tab-content" id="rpc-tab">
                             <h3 class="tab-title">RPC Providers</h3>
+                            <p class="info-text">Note: Free/public RPC endpoints are often rate-limited and can be unreliable under load. For best performance and stability, configure premium RPCs.</p>
                             <div class="form-section">
-                                <h4>🔵 Primary Providers</h4>
+                                <h4>🔵 RPC Providers</h4>
                                 <div class="form-group">
                                     <label for="config-rpc-url">Alchemy HTTP RPC:</label>
                                     <input type="text" id="config-rpc-url"
@@ -1345,16 +1346,16 @@
                                 </div>
                                 <small>💡 Configure multiple providers for automatic failover and load balancing. At least one HTTP RPC is required.</small>
                             </div>
-                            <div class="form-section">
+                            <!-- <div class="form-section">
                                 <h4>🔗 Dynamic RPC Providers</h4>
                                 <div id="dynamic-rpcs-container">
-                                    <!-- Dynamic RPC entries will be populated here -->
+                                   
                                 </div>
                                 <div class="form-group">
                                     <button type="button" class="btn btn-outline" onclick="addDynamicRpc()">+ Add RPC Provider</button>
                                     <small>📈 Add additional RPC providers for enhanced redundancy and load distribution</small>
                                 </div>
-                            </div>
+                            </div> -->
                         </div>
 
                         <!-- Trading Config Tab -->

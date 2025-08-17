@@ -2827,6 +2827,25 @@ function getFormBoolValue(elementId, defaultValue = false) {
     return element ? element.value === 'true' : defaultValue;
 }
 
+// Encode a URL to Base64 only if it looks like a plain URL (http/https/ws/wss)
+function toBase64IfPlain(url) {
+    if (!url) return url;
+    const trimmed = url.trim();
+    const looksPlain = trimmed.startsWith('http://') || trimmed.startsWith('https://') ||
+                       trimmed.startsWith('ws://') || trimmed.startsWith('wss://');
+    if (!looksPlain) return trimmed; // already encoded or custom format
+    try {
+        return btoa(trimmed);
+    } catch (e) {
+        try {
+            // Fallback for environments where btoa may not handle unicode
+            return Buffer.from(trimmed, 'utf8').toString('base64');
+        } catch (_) {
+            return trimmed; // as-is if encoding fails
+        }
+    }
+}
+
 async function saveConfig() {
     try {
         // Only include fields that have values or are explicitly being changed
@@ -2841,28 +2860,34 @@ async function saveConfig() {
             config.virtualTokenAddress = virtualAddress;
         }
         
-        // RPC Providers - only if filled
+        // RPC Providers - only if filled (store as Base64 if plain URLs)
         const rpcUrl = getFormValue('config-rpc-url');
-        if (rpcUrl) config.rpcUrl = rpcUrl;
+        if (rpcUrl) config.rpcUrl = toBase64IfPlain(rpcUrl);
         
         const wsUrl = getFormValue('config-ws-url');
-        if (wsUrl) config.wsUrl = wsUrl;
+        if (wsUrl) config.wsUrl = toBase64IfPlain(wsUrl);
         
         const rpcUrlQuickNode = getFormValue('config-rpc-url-quicknode');
-        if (rpcUrlQuickNode) config.rpcUrlQuickNode = rpcUrlQuickNode;
+        if (rpcUrlQuickNode) config.rpcUrlQuickNode = toBase64IfPlain(rpcUrlQuickNode);
         
         const wsUrlQuickNode = getFormValue('config-ws-url-quicknode');
-        if (wsUrlQuickNode) config.wsUrlQuickNode = wsUrlQuickNode;
+        if (wsUrlQuickNode) config.wsUrlQuickNode = toBase64IfPlain(wsUrlQuickNode);
         
         const rpcUrlInfura = getFormValue('config-rpc-url-infura');
-        if (rpcUrlInfura) config.rpcUrlInfura = rpcUrlInfura;
+        if (rpcUrlInfura) config.rpcUrlInfura = toBase64IfPlain(rpcUrlInfura);
         
         const wsUrlInfura = getFormValue('config-ws-url-infura');
-        if (wsUrlInfura) config.wsUrlInfura = wsUrlInfura;
+        if (wsUrlInfura) config.wsUrlInfura = toBase64IfPlain(wsUrlInfura);
         
-        // Dynamic RPC Providers - only if UI has entries
+        // Dynamic RPC Providers - only if UI has entries; encode URLs if plain
         const dynamicRpcs = typeof collectDynamicRpcs === 'function' ? collectDynamicRpcs() : [];
-        if (dynamicRpcs.length > 0) config.dynamicRpcs = dynamicRpcs;
+        if (dynamicRpcs.length > 0) {
+            config.dynamicRpcs = dynamicRpcs.map(rpc => ({
+                ...rpc,
+                rpcUrl: rpc.rpcUrl ? toBase64IfPlain(rpc.rpcUrl) : rpc.rpcUrl,
+                wsUrl: rpc.wsUrl ? toBase64IfPlain(rpc.wsUrl) : rpc.wsUrl
+            }));
+        }
         
         // Trading Configuration - only if changed from defaults
         const genesisContract = getFormValue('config-genesis-contract');

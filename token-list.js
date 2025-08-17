@@ -19,9 +19,9 @@ function initTokenList() {
                     <div class="token-sort-icon">
                         <i class="fas fa-sort-down" style="font-size: 24px;"></i>
                         <div class="token-sort-dropdown">
-                            <div class="token-sort-option" data-sort="marketcap">Sort by Market Cap</div>
+                            <!-- <div class="token-sort-option" data-sort="marketcap">Sort by Market Cap</div> -->
                             <div class="token-sort-option" data-sort="name">Sort by Name</div>
-                            <div class="token-sort-option" data-sort="symbol">Sort by Symbol</div>
+                            <!-- <div class="token-sort-option" data-sort="symbol">Sort by Symbol</div> -->
                         </div>
                     </div>
                 </div>
@@ -42,7 +42,7 @@ function initTokenList() {
     const contentDiv = container.querySelector('.token-list-wrapper');
     
     // Current sort value
-    let currentSortValue = 'marketcap';
+    let currentSortValue = 'name';
 
     // Load tokens based on current mode
     loadTokens(contentDiv, searchInput, currentSortValue);
@@ -134,8 +134,14 @@ async function loadTokens(contentDiv, searchInput, sortBy) {
             console.log('Virtual mode active - loaded base.json tokens only:', tokens.length);
         }
         
-        // Sort tokens by market cap by default
-        tokens.sort((a, b) => b.marketcap - a.marketcap);
+        // Sort tokens by name by default
+        tokens.sort((a, b) => {
+            const aName = a.name || a.symbol || '';
+            const bName = b.name || b.symbol || '';
+            const aNameForSort = aName.startsWith('$') ? aName.substring(1) : aName;
+            const bNameForSort = bName.startsWith('$') ? bName.substring(1) : bName;
+            return aNameForSort.localeCompare(bNameForSort);
+        });
         
         // Display tokens
         displayTokens(contentDiv, tokens, searchInput.value, sortBy);
@@ -145,7 +151,7 @@ async function loadTokens(contentDiv, searchInput, sortBy) {
     }
 }
 
-function displayTokens(contentDiv, tokens, searchTerm = '', sortBy = 'marketcap') {
+function displayTokens(contentDiv, tokens, searchTerm = '', sortBy = 'name') {
     // Sort tokens
     if (sortBy === 'name') {
         // Sort by name (fallback to symbol if name is not available)

@@ -2946,6 +2946,35 @@ body.console-fullscreen .console-container:not(.console-detailed) {
     line-height: 1.4;
 }
 
+/* Scoped styling for RPC Providers advisory note */
+#rpc-tab .info-text {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    background: rgba(139, 157, 195, 0.08);
+    border: 1px solid rgba(139, 157, 195, 0.25);
+    border-left: 3px solid #8b9dc3;
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin: 8px 0 12px;
+    color: #ddd;
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+#rpc-tab .info-text::before {
+    content: "ℹ️";
+    font-size: 1rem;
+    line-height: 1.2;
+    margin-top: 2px;
+    flex-shrink: 0;
+    filter: saturate(120%);
+}
+
+#rpc-tab .info-text strong {
+    color: #8b9dc3;
+}
+
 .info-box li::before {
     content: '•';
     color: #8b9dc3;

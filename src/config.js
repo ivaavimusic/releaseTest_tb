@@ -36,8 +36,13 @@ const config = walletsDB.config;
 function decodeRpcUrl(encodedUrl) {
   if (!encodedUrl) return '';
   try {
-    // Check if it's already a valid URL (starts with http/https)
-    if (encodedUrl.startsWith('http://') || encodedUrl.startsWith('https://')) {
+    // Check if it's already a valid URL (starts with http/https/ws/wss)
+    if (
+      encodedUrl.startsWith('http://') ||
+      encodedUrl.startsWith('https://') ||
+      encodedUrl.startsWith('ws://') ||
+      encodedUrl.startsWith('wss://')
+    ) {
       return encodedUrl;
     }
     // Decode base64 encoded URL
