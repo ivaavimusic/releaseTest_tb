@@ -22,6 +22,7 @@
     "sellbot": "node sellbot.mjs",
     "farmbot": "node farmbot.mjs",
     "jeetbot": "node jeetbot.mjs",
+    "sniperbot": "node src/bots/snipe-prebuilt.mjs",
     "mmbot": "node mmbot.mjs",
     "ticker:search": "node ticker-search.mjs",
     "ticker:fetchAll": "node ticker-fetchAll.mjs",
@@ -91,21 +92,22 @@
     "request": "npm:@cypress/request@latest"
   },
   "build": {
-    "appId": "com.trustbot.desktop",
+    "appId": "com.trustbot.app",
     "productName": "TRUSTBOT",
-    "icon": "assets/icon.ico",
-    "directories": {
-      "output": "dist"
-    },
-    "generateUpdatesFilesForAllChannels": false,
     "publish": {
       "provider": "github",
-      "owner": "Degenapetrader",
+      "owner": "degenapetrader",
       "repo": "TRUST-BOT",
-      "private": false,
       "releaseType": "release",
       "publishAutoUpdate": true
     },
+    "extraResources": [
+      {
+        "from": "./",
+        "to": "./",
+        "filter": ["base.json", "bid.json", "eth.json", "sol.json", "detected-tokens.json", "TokenList.json"]
+      }
+    ],
     "files": [
       "main.js",
       "secureBootstrap.js",

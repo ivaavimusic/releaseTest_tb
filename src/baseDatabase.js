@@ -1,8 +1,14 @@
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { log } from './utils.js';
+import { runTickerSearchFallback } from './utils/externalCommands.js';
+
+// ESM equivalent of __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const execAsync = promisify(exec);
 
@@ -12,9 +18,43 @@ const BASE_DB_FILE = 'base.json';
 // Load base database from file
 function loadBaseDatabase() {
   try {
-    if (fs.existsSync(BASE_DB_FILE)) {
-      const data = fs.readFileSync(BASE_DB_FILE, 'utf8');
-      return JSON.parse(data);
+    // Build candidate paths in order of preference
+    const candidates = [];
+    // 1) Explicit current working directory
+    candidates.push(path.resolve(process.cwd(), BASE_DB_FILE));
+    // 2) userData directory (same dir as wallets.json if available)
+    try {
+      if (process.env.WALLETS_DB_PATH) {
+        const userDataDir = path.dirname(process.env.WALLETS_DB_PATH);
+        candidates.push(path.join(userDataDir, BASE_DB_FILE));
+      }
+    } catch {}
+    // 3) Electron resources paths (packaged)
+    try {
+      const resourcesPath = process.resourcesPath;
+      if (resourcesPath) {
+        candidates.push(path.join(resourcesPath, BASE_DB_FILE));
+        candidates.push(path.join(resourcesPath, 'app.asar.unpacked', BASE_DB_FILE));
+        candidates.push(path.join(resourcesPath, 'app.asar', BASE_DB_FILE));
+      }
+    } catch {}
+    // 4) Relative to this module (dev/bundled fallbacks)
+    candidates.push(path.join(__dirname, BASE_DB_FILE));
+    candidates.push(path.join(__dirname, '..', BASE_DB_FILE));
+    candidates.push(path.join(__dirname, '..', '..', BASE_DB_FILE));
+
+    // Read first existing file
+    for (const p of candidates) {
+      try {
+        if (fs.existsSync(p)) {
+          const data = fs.readFileSync(p, 'utf8');
+          const parsed = JSON.parse(data);
+          log(`📦 Loaded base database from: ${p} (${Array.isArray(parsed) ? parsed.length : 0} entries)`);
+          return Array.isArray(parsed) ? parsed : [];
+        }
+      } catch (readErr) {
+        log(`⚠️ Error reading candidate base.json at ${p}: ${readErr.message}`);
+      }
     }
   } catch (error) {
     log(`⚠️ Error loading base database: ${error.message}`);
@@ -26,14 +66,15 @@ function loadBaseDatabase() {
 // Search token by symbol (ticker)
 export function searchBySymbol(symbol) {
   const database = loadBaseDatabase();
-  const upperSymbol = symbol.toUpperCase();
+  const normalize = (s) => String(s || '').trim().replace(/^\$/,'').toUpperCase();
+  const want = normalize(symbol);
   
-  // Find exact match first
-  let token = database.find(token => token.symbol && token.symbol.toUpperCase() === upperSymbol);
+  // Find exact match first (normalized)
+  let token = database.find(t => t.symbol && normalize(t.symbol) === want);
   
-  // If no exact match, try partial match
+  // If no exact match, try partial match (normalized)
   if (!token) {
-    token = database.find(token => token.symbol && token.symbol.toUpperCase().includes(upperSymbol));
+    token = database.find(t => t.symbol && normalize(t.symbol).includes(want));
   }
   
   return token || null;
@@ -102,10 +143,39 @@ export async function resolveToken(input) {
   log(`📡 Token not found in base database, trying ticker search API...`);
   try {
     const searchTerm = isAddress ? input : input.toUpperCase();
-    const { stdout } = await execAsync(`npm run ticker:search ${searchTerm}`, { 
-      timeout: 30000,
-      maxBuffer: 1024 * 1024 
-    });
+    const searchSuccess = await runTickerSearchFallback(searchTerm);
+    if (!searchSuccess) {
+      throw new Error('Ticker search failed');
+    }
+    // Re-read the database after ticker search to get updated data
+    const updatedDb = loadBaseDatabase();
+    // Try to find the token again in the updated database
+    const isAddress = input.startsWith('0x') && input.length === 42;
+    let tokenInfo = null;
+    
+    if (isAddress) {
+      tokenInfo = updatedDb.find(token => 
+        token.tokenAddress && token.tokenAddress.toLowerCase() === input.toLowerCase()
+      );
+    } else {
+      const normalize = (s) => String(s || '').trim().replace(/^\$/,'').toUpperCase();
+      const want = normalize(input);
+      tokenInfo = updatedDb.find(t => t.symbol && normalize(t.symbol) === want);
+    }
+    
+    if (tokenInfo) {
+      log(`✅ Found token in updated database: ${tokenInfo.symbol} (${tokenInfo.tokenAddress})`);
+      return {
+        success: true,
+        source: 'base_db_updated',
+        address: tokenInfo.tokenAddress,
+        symbol: tokenInfo.symbol,
+        lpAddress: tokenInfo.lpAddress,
+        name: tokenInfo.symbol
+      };
+    }
+    // If still not found, continue with fallback parsing (keeping original logic)
+    const stdout = '';
     
     // Parse the output to extract token information
     const lines = stdout.split('\n');

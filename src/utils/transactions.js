@@ -40,7 +40,7 @@ export async function executeWithRetry(fn, maxRetries = 3, initialDelay = 1000) 
  */
 export async function getOptimizedGasSettings(provider, multiplier = 1.1) {
   try {
-    const gasPrice = await provider.getGasPrice();
+    const gasParams = await gasPriceService.getGasParams();
     const optimizedGasPrice = gasPrice * BigInt(Math.floor(multiplier * 100)) / 100n;
     
     return {

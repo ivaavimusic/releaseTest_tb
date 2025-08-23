@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
-const { spawn, execSync } = require('child_process');
+const { spawn, execSync, fork } = require('child_process');
 const fs = require('fs');
 const { WalletEncryption } = require('./src/utils/walletEncryption.cjs');
 const { registerTokenHandlers } = require('./token-handlers');
@@ -205,7 +205,45 @@ ipcMain.handle('validate-private-key', async (event, privateKey, encryptedKey) =
     console.error('Error validating private key:', error);
     throw new Error('Invalid private key: ' + error.message);
   }
-})
+});
+
+// Provide userData path to renderer for reading updated token files
+ipcMain.handle('get-user-data-path', async () => {
+  try {
+    return app.getPath('userData');
+  } catch (e) {
+    return null;
+  }
+});
+
+// Allow renderer to trigger token ticker update on demand
+ipcMain.handle('run-ticker-update', async () => {
+  try {
+    // If an update is already in progress, return immediately
+    if (runAutomaticTickerUpdate.inProgress) {
+      return { success: true, inProgress: true, message: 'Update already in progress' };
+    }
+
+    // Start update in background and return immediately
+    Promise.resolve()
+      .then(() => runAutomaticTickerUpdate())
+      .catch(err => {
+        console.error('Background ticker update failed:', err);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('ticker-update-completed', {
+            success: false,
+            message: 'Failed to update token database',
+            error: err?.message || String(err)
+          });
+        }
+      });
+
+    return { success: true, inProgress: true };
+  } catch (e) {
+    console.error('run-ticker-update failed:', e);
+    return { success: false, error: e?.message || String(e) };
+  }
+});
 
 // Global variable to track console window
 let consoleWindow = null;
@@ -437,6 +475,10 @@ ipcMain.handle('create-console-window', async (event) => {
     consoleWindow.once('ready-to-show', () => {
       consoleWindow.show();
       consoleWindow.focus();
+      // Notify renderer process that console window is ready to receive messages
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('console-window-ready');
+      }
     });
     
     // Clean up reference when window is closed
@@ -491,6 +533,7 @@ function getNpmScriptForBot(botType) {
     'sellbot-fsh': 'sellbot',  // FSH will be handled via arguments
     'farmbot': 'farmbot',
     'jeetbot': 'jeetbot',
+    'snipebot': 'snipebot',
     'mmbot': 'mmbot',
     'transferbot': 'transferbot',
     'stargate': 'stargate',
@@ -522,7 +565,7 @@ function createWindow() {
     autoHideMenuBar: true, // Hide menu bar for clean UI
     webPreferences: {
       nodeIntegration: true,
-      contextIsolation: false,
+      contextIsolation: false, // Keep false for compatibility with existing code
       enableRemoteModule: true
     },
     icon: path.join(__dirname, 'assets', 'icon.ico'), // Application icon
@@ -586,6 +629,16 @@ function createWindow() {
       app.dock.show();
     }
     mainWindow.focus();
+
+    // Kick off automatic token ticker update on app startup (always enabled)
+    try {
+      console.log('🚀 Triggering automatic token update on startup...');
+      runAutomaticTickerUpdate().catch(err => {
+        console.error('❌ Automatic token update failed:', err);
+      });
+    } catch (e) {
+      console.error('❌ Failed to start automatic token update:', e);
+    }
   });
 
   // Open external links in browser
@@ -709,92 +762,244 @@ function createWindow() {
 }
 
 // Function to run automatic ticker update in background
-function runAutomaticTickerUpdate() {
-  // Skip ticker updates in packaged apps to avoid spawn ENOTDIR errors
-  if (app.isPackaged) {
-    console.log('⚠️ Skipping ticker update in packaged app (npm not available)');
-    return;
+async function runAutomaticTickerUpdate() {
+  console.log('🚀 Starting automatic ticker update...');
+  // Single-flight guard: prevent concurrent runs
+  if (runAutomaticTickerUpdate.inProgress && runAutomaticTickerUpdate.currentPromise) {
+    console.log('⏳ Ticker update already in progress, joining existing promise');
+    return runAutomaticTickerUpdate.currentPromise;
   }
   
-  console.log('🚀 Starting automatic ticker update...');
-  
-  const updateProcess = spawn('npm', ['run', 'ticker:updateNew'], {
-    cwd: __dirname,
-    stdio: ['pipe', 'pipe', 'pipe'],
-    shell: true
-  });
-
-  // Track the process for cleanup
-  childProcesses.push(updateProcess);
-
-  let output = '';
-  let errorOutput = '';
-
-  updateProcess.stdout.on('data', (data) => {
-    const chunk = data.toString();
-    output += chunk;
-    // Log ticker update progress (can be seen in dev console)
-    console.log(`[Ticker Update] ${chunk.trim()}`);
-  });
-
-  updateProcess.stderr.on('data', (data) => {
-    const chunk = data.toString();
-    errorOutput += chunk;
-    console.warn(`[Ticker Update Error] ${chunk.trim()}`);
-  });
-
-  updateProcess.on('close', (code) => {
-    // Remove from tracking array
-    const index = childProcesses.indexOf(updateProcess);
-    if (index > -1) {
-      childProcesses.splice(index, 1);
-    }
-
-    console.log(`✅ Ticker update completed with exit code: ${code}`);
+  // Different approach for packaged vs development
+  if (app.isPackaged) {
+    // In packaged app, spawn Electron as Node to run the ESM script reliably
+    let scriptPath;
     
-    if (code === 0) {
-      console.log('📊 Token database updated successfully');
-      
-      // Send success notification to renderer if window exists
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('ticker-update-completed', {
-          success: true,
-          message: 'Token database updated successfully',
-          output: output
-        });
-      }
+    // Check if we're in the app.asar context
+    if (__dirname.includes('app.asar')) {
+      // Use app.asar.unpacked path for ESM modules
+      scriptPath = path.join(__dirname.replace('app.asar', 'app.asar.unpacked'), 'ticker-updateNew.mjs');
     } else {
-      console.error('❌ Ticker update failed with error output:', errorOutput);
+      scriptPath = path.join(__dirname, 'ticker-updateNew.mjs');
+    }
+    
+    console.log(`🔍 Running ticker update script at: ${scriptPath}`);
+    console.log(`🔍 Current directory: ${__dirname}`);
+    
+    // Check if the file exists before trying to fork it
+    if (!fs.existsSync(scriptPath)) {
+      console.error(`❌ Error: ticker update script not found at ${scriptPath}`);
+      // Try to find the script in alternative locations
+      const possibleLocations = [
+        path.join(process.resourcesPath, 'app.asar.unpacked', 'ticker-updateNew.mjs'),
+        path.join(process.resourcesPath, 'ticker-updateNew.mjs'),
+        path.join(app.getAppPath(), 'ticker-updateNew.mjs')
+      ];
       
-      // Send error notification to renderer if window exists
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('ticker-update-completed', {
-          success: false,
-          message: 'Failed to update token database',
-          error: errorOutput
-        });
+      for (const location of possibleLocations) {
+        console.log(`🔍 Checking alternative location: ${location}`);
+        if (fs.existsSync(location)) {
+          scriptPath = location;
+          console.log(`✅ Found ticker update script at: ${scriptPath}`);
+          break;
+        }
+      }
+      
+      if (!fs.existsSync(scriptPath)) {
+        console.error(`❌ Could not find ticker update script in any location`);
+        return;
       }
     }
-  });
-
-  updateProcess.on('error', (error) => {
-    // Remove from tracking array
-    const index = childProcesses.indexOf(updateProcess);
-    if (index > -1) {
-      childProcesses.splice(index, 1);
-    }
-
-    console.error('❌ Failed to start ticker update:', error.message);
     
-    // Send error notification to renderer if window exists
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('ticker-update-completed', {
-        success: false,
-        message: 'Failed to start ticker update',
-        error: error.message
+    // Use Electron binary as Node to execute ESM .mjs
+    const updateProcess = spawn(process.execPath, [scriptPath], {
+      cwd: app.getPath('userData'), // Write outputs (e.g., base.json) to userData
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
+    });
+    
+    // Track the process for cleanup
+    childProcesses.push(updateProcess);
+    
+    let output = '';
+    let errorOutput = '';
+    let newTokensCount = 0;
+    
+    // No IPC messages in spawn mode; rely on stdout parsing for progress if needed
+    
+    // Handle errors in the fork process
+    updateProcess.on('error', (err) => {
+      console.error(`❌ [Ticker Update] Failed to start process: ${err.message}`);
+      errorOutput += `Failed to start process: ${err.message}\n`;
+    });
+    
+    updateProcess.stdout.on('data', (data) => {
+      const chunk = data.toString();
+      output += chunk;
+      console.log(`[Ticker Update] ${chunk.trim()}`);
+    });
+    
+    updateProcess.stderr.on('data', (data) => {
+      const chunk = data.toString();
+      errorOutput += chunk;
+      console.warn(`[Ticker Update Error] ${chunk.trim()}`);
+    });
+    
+    // Wait for process to complete with timeout
+    runAutomaticTickerUpdate.inProgress = true;
+    runAutomaticTickerUpdate.currentPromise = new Promise((resolve, reject) => {
+      const timeoutMs = 60 * 1000; // 60 seconds safety timeout
+      const timer = setTimeout(() => {
+        try {
+          console.warn('⏰ [Ticker Update] Timeout reached, killing process');
+          updateProcess.kill('SIGKILL');
+        } catch {}
+      }, timeoutMs);
+      updateProcess.on('close', (code) => {
+        // Remove from tracking array
+        const index = childProcesses.indexOf(updateProcess);
+        if (index > -1) {
+          childProcesses.splice(index, 1);
+        }
+        
+        console.log(`✅ Ticker update completed with exit code: ${code}`);
+        
+        if (code === 0) {
+          console.log(`📊 Token database updated successfully - ${newTokensCount} new tokens`);
+          
+          // Send success notification to renderer if window exists
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('ticker-update-completed', {
+              success: true,
+              message: `Token database updated - ${newTokensCount} new tokens added`
+            });
+          }
+          clearTimeout(timer);
+          runAutomaticTickerUpdate.inProgress = false;
+          runAutomaticTickerUpdate.currentPromise = null;
+          resolve();
+        } else {
+          console.error('❌ Ticker update failed with code:', code);
+          
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('ticker-update-completed', {
+              success: false,
+              message: 'Failed to update token database',
+              error: errorOutput || 'Unknown error'
+            });
+          }
+          clearTimeout(timer);
+          runAutomaticTickerUpdate.inProgress = false;
+          runAutomaticTickerUpdate.currentPromise = null;
+          reject(new Error(`Ticker update failed with code ${code}`));
+        }
       });
-    }
-  });
+    });
+    return runAutomaticTickerUpdate.currentPromise;
+  } else {
+    // In development, use npm script
+    const updateProcess = spawn('npm', ['run', 'ticker:updateNew'], {
+      cwd: __dirname,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      shell: true
+    });
+
+    // Track the process for cleanup
+    childProcesses.push(updateProcess);
+
+    let output = '';
+    let errorOutput = '';
+
+    updateProcess.stdout.on('data', (data) => {
+      const chunk = data.toString();
+      output += chunk;
+      // Log ticker update progress (can be seen in dev console)
+      console.log(`[Ticker Update] ${chunk.trim()}`);
+    });
+
+    updateProcess.stderr.on('data', (data) => {
+      const chunk = data.toString();
+      errorOutput += chunk;
+      console.warn(`[Ticker Update Error] ${chunk.trim()}`);
+    });
+    
+    // Return a promise that resolves/rejects on process completion with timeout
+    runAutomaticTickerUpdate.inProgress = true;
+    runAutomaticTickerUpdate.currentPromise = new Promise((resolve, reject) => {
+      const timeoutMs = 60 * 1000; // 60 seconds safety timeout
+      const timer = setTimeout(() => {
+        try {
+          console.warn('⏰ [Ticker Update] Timeout reached, killing process');
+          updateProcess.kill('SIGKILL');
+        } catch {}
+      }, timeoutMs);
+      updateProcess.on('close', (code) => {
+        // Remove from tracking array
+        const index = childProcesses.indexOf(updateProcess);
+        if (index > -1) {
+          childProcesses.splice(index, 1);
+        }
+
+        console.log(`✅ Ticker update completed with exit code: ${code}`);
+        
+        if (code === 0) {
+          console.log('📊 Token database updated successfully');
+          
+          // Send success notification to renderer if window exists
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('ticker-update-completed', {
+              success: true,
+              message: 'Token database updated successfully',
+              output: output
+            });
+          }
+          clearTimeout(timer);
+          runAutomaticTickerUpdate.inProgress = false;
+          runAutomaticTickerUpdate.currentPromise = null;
+          resolve();
+        } else {
+          console.error('❌ Ticker update failed with error output:', errorOutput);
+          
+          // Send error notification to renderer if window exists
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('ticker-update-completed', {
+              success: false,
+              message: 'Failed to update token database',
+              error: errorOutput
+            });
+          }
+          clearTimeout(timer);
+          runAutomaticTickerUpdate.inProgress = false;
+          runAutomaticTickerUpdate.currentPromise = null;
+          reject(new Error(`Ticker update failed with code ${code}`));
+        }
+      });
+
+      // Handle process spawn errors in development mode
+      updateProcess.on('error', (error) => {
+        // Remove from tracking array
+        const index = childProcesses.indexOf(updateProcess);
+        if (index > -1) {
+          childProcesses.splice(index, 1);
+        }
+
+        console.error('❌ Failed to start ticker update:', error.message);
+        
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('ticker-update-completed', {
+            success: false,
+            message: 'Failed to start token database update',
+            error: error.message
+          });
+        }
+        clearTimeout(timer);
+        runAutomaticTickerUpdate.inProgress = false;
+        runAutomaticTickerUpdate.currentPromise = null;
+        reject(error);
+      });
+    });
+    return runAutomaticTickerUpdate.currentPromise;
+  }
 }
 
 // Function to run GenesisBid.js and find-pool.mjs BID sequentially after ticker update
@@ -875,23 +1080,55 @@ function runGenesisBidAndFindPool() {
     });
 }
 
-// App event handlers
+// Initialize app when ready
 app.whenReady().then(() => {
-  initializeWalletsDB();
   createWindow();
+  
+  // Setup auto-updater
+  setupAutoUpdater();
+  
+  // Add IPC handlers for resource paths
+  ipcMain.handle('is-packaged', () => {
+    return app.isPackaged;
+  });
+  
+  ipcMain.handle('get-resource-path', (event, filename) => {
+    if (app.isPackaged) {
+      // In packaged app, check extraResources first
+      const extraResourcePath = path.join(process.resourcesPath, filename);
+      if (fs.existsSync(extraResourcePath)) {
+        return extraResourcePath;
+      }
+      
+      // Then check app.asar.unpacked
+      const unpackedPath = path.join(__dirname, filename);
+      if (fs.existsSync(unpackedPath)) {
+        return unpackedPath;
+      }
+      
+      // Return the path even if it doesn't exist for logging purposes
+      return extraResourcePath;
+    } else {
+      // In development, use the file from the project root
+      return path.join(__dirname, filename);
+    }
+  });
   
   // Register token handlers
   registerTokenHandlers();
   console.log('✅ Token handlers registered');
   
-  // Run automatic ticker update after app is ready
-  // Add a small delay to ensure the app is fully initialized
+  // Run automatic ticker update after app is ready (gated by env var)
+  // Add a longer delay to ensure the app is fully initialized
   setTimeout(() => {
-    runAutomaticTickerUpdate();
+    console.log('🚀 Initiating automatic ticker update...');
+    runAutomaticTickerUpdate().catch(err => {
+      console.error('❌ Error running automatic ticker update:', err);
+    });
     
     // Register protocol handler
     app.setAsDefaultProtocolClient('trustbot');
-  }, 1000); // 1 second delay
+  }, 3000); // 3 second delay to ensure app is fully initialized
 
   // After ticker update, run GenesisBid.js and find-pool.mjs BID in sequence
   setTimeout(() => {

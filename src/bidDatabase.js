@@ -3,6 +3,7 @@ import path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { log } from './utils.js';
+import { runTickerSearchFallback } from './utils/externalCommands.js';
 
 const execAsync = promisify(exec);
 
@@ -104,10 +105,18 @@ export async function resolveBidToken(input) {
   log(`📡 BID-MODE: Token not found in bid database, trying ticker search API...`);
   try {
     const searchTerm = isAddress ? input : input.toUpperCase();
-    const { stdout } = await execAsync(`npm run ticker:search ${searchTerm}`, { 
-      timeout: 30000,
-      maxBuffer: 1024 * 1024 
-    });
+    const searchSuccess = await runTickerSearchFallback(searchTerm);
+    if (!searchSuccess) {
+      throw new Error('Ticker search failed');
+    }
+    // Re-read the database after ticker search to get updated data
+    const updatedDb = loadBidDatabase();
+    const retryResult = findTokenInDatabase(updatedDb, input);
+    if (retryResult.success) {
+      return retryResult;
+    }
+    // If still not found, continue with fallback parsing (keeping original logic)
+    const stdout = '';
     
     // Parse the output to extract token information
     const lines = stdout.split('\n');

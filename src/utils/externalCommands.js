@@ -1,4 +1,7 @@
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 /**
  * Run ticker search command as a fallback
@@ -8,22 +11,45 @@ import { execSync } from 'child_process';
 export async function runTickerSearchFallback(symbol) {
   try {
     console.log(`🔍 Running ticker search fallback for: ${symbol}`);
-    console.log(`⚡ Command: npm run ticker:search ${symbol}`);
-    
-    // Run the npm command synchronously
-    const result = execSync(`npm run ticker:search ${symbol}`, {
-      cwd: process.cwd(),
+    // Prefer npm when available (dev), otherwise execute the script directly (packaged)
+    const hasNpm = commandExists('npm');
+    if (hasNpm) {
+      console.log(`⚡ Command: npm run ticker:search ${symbol}`);
+      const result = execSync(`npm run ticker:search ${symbol}`, {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        timeout: 30000,
+        stdio: 'pipe'
+      });
+      console.log(`✅ Ticker search completed for ${symbol}`);
+      console.log(`📝 Output preview: ${result.slice(0, 200)}...`);
+      return true;
+    }
+
+    // Fallback: execute ticker-search.mjs directly with current runtime (Electron as Node in packaged builds)
+    const scriptPath = resolveTickerSearchScriptPath();
+    if (!scriptPath) {
+      console.log(`❌ Could not locate ticker-search.mjs script`);
+      return false;
+    }
+    console.log(`⚡ Direct exec: ${process.execPath} ${scriptPath} ${symbol}`);
+    const out = execFileSync(process.execPath, [scriptPath, symbol], {
+      cwd: path.dirname(scriptPath),
       encoding: 'utf8',
-      timeout: 30000, // 30 second timeout
-      stdio: 'pipe' // Capture output
+      timeout: 30000, // timeout 30s
+      stdio: 'pipe'
     });
-    
     console.log(`✅ Ticker search completed for ${symbol}`);
-    console.log(`📝 Output preview: ${result.slice(0, 200)}...`);
-    
+    console.log(`📝 Output preview: ${String(out).slice(0, 200)}...`);
     return true;
   } catch (error) {
     console.log(`❌ Ticker search failed for ${symbol}: ${error.message}`);
+    // In packaged mode, if ticker search fails, we should still return true
+    // to allow the calling code to continue with other fallbacks (like Alchemy)
+    if (!commandExists('npm')) {
+      console.log(`⚠️ Packaged mode: Continuing without ticker search to allow Alchemy fallback`);
+      return true; // Allow other fallbacks to work
+    }
     return false;
   }
 }
@@ -98,4 +124,28 @@ export function commandExists(command) {
  */
 export function getEnvVar(name, defaultValue = '') {
   return process.env[name] || defaultValue;
-} 
+}
+
+// Resolve the absolute path to ticker-search.mjs in both dev and packaged builds
+function resolveTickerSearchScriptPath() {
+  try {
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const candidates = [
+      // Dev: project root adjacent to src/
+      path.resolve(__dirname, '../../ticker-search.mjs'),
+      // If cwd is project root
+      path.resolve(process.cwd(), 'ticker-search.mjs'),
+      // Packaged: resources folder patterns
+      process.resourcesPath ? path.resolve(process.resourcesPath, 'app.asar.unpacked', 'ticker-search.mjs') : null,
+      process.resourcesPath ? path.resolve(process.resourcesPath, 'ticker-search.mjs') : null
+    ].filter(Boolean);
+
+    for (const p of candidates) {
+      try {
+        if (fs.existsSync(p)) return p;
+      } catch {}
+    }
+  } catch {}
+  return null;
+}

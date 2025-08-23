@@ -42,7 +42,7 @@ export class MMCommandParser {
     const { loops, remainingArgs: afterLoops } = ArgumentParser.parseLoops(finalArgs, 'mmbot');
     
     // Parse I-X format
-    let checkInterval = 30; // Default 30 seconds (I-0.5)
+    let checkInterval = 6; // Default 6 seconds (I-0.1)
     let intervalArgs = [...afterLoops];
     const intervalIndex = intervalArgs.findIndex(arg => arg.startsWith('I-') || arg.startsWith('i-'));
     if (intervalIndex !== -1) {
@@ -104,6 +104,9 @@ export class MMCommandParser {
       throw new Error('Invalid RH range! Must be between 0% and 50%');
     }
     
+    // Normalize loops: use null to represent INFINITE for downstream logic
+    const normalizedLoops = (loops === Infinity ? null : loops);
+
     console.log(`📋 Parsed configuration:`);
     console.log(`   🪙 Token: ${token}`);
     console.log(`   👛 Wallets: ${selectedWallets.length}`);
@@ -112,7 +115,7 @@ export class MMCommandParser {
     console.log(`   📉 Lower Range (RL): ${lowerRange}% (buy threshold)`);
     console.log(`   📈 Higher Range (RH): ${higherRange}% (sell threshold)`);
     console.log(`   ⏰ Interval: ${checkInterval}s`);
-    console.log(`   🔄 Loops: ${loops || 'INFINITE'}`);
+    console.log(`   🔄 Loops: ${normalizedLoops ?? 'INFINITE'}`);
     console.log(`   🎯 Chase Mode: ${chaseMode ? 'ON' : 'OFF'}`);
     console.log(`   ⛽ Gas: ${customGasPrice || '0.02'} gwei`);
     
@@ -124,7 +127,7 @@ export class MMCommandParser {
       lowerRange,
       higherRange,
       checkInterval,
-      loops: loops || null, // null means infinite
+      loops: normalizedLoops, // null means infinite
       chaseMode,
       customGasPrice
     };

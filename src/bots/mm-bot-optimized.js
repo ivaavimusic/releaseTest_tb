@@ -478,7 +478,7 @@ export class MMBot {
     console.log(`📉 Lower Range: ${config.lowerRange}% (buy when price drops)`);
     console.log(`📈 Higher Range: ${config.higherRange}% (sell when price rises)`);
     console.log(`⏰ Check Interval: ${config.checkInterval}s`);
-    console.log(`🔄 Loops: ${config.loops ? config.loops + ' (alternating buy/sell cycles)' : 'INFINITE (continuous market making)'}`);
+    console.log(`🔄 Loops: ${config.loops === null ? 'INFINITE (continuous market making, 12h cap)' : config.loops + ' (alternating buy/sell cycles)'}`);
     console.log(`🎯 Chase Mode: ${config.chaseMode ? 'ENABLED' : 'DISABLED'}`);
     console.log(`💱 Trading: TRUSTSWAP contract for all operations (0.25% fee)`);
     console.log(`⛽ Gas: ${config.customGasPrice || '0.02'} gwei`);
@@ -508,10 +508,24 @@ export class MMBot {
     console.log('⚠️ Press Ctrl+C to stop');
     
     this.running = true;
+    // Apply a 12-hour safety cap only for infinite mode
+    const infiniteMode = (config.loops === null);
+    const INFINITE_MAX_MS = 12 * 60 * 60 * 1000; // 12 hours
+    const infiniteEndAt = infiniteMode ? (Date.now() + INFINITE_MAX_MS) : null;
     
     // Main loop
     while (this.running && (config.loops === null || this.completedLoops < config.loops)) {
+      // Immediate termination check (from SIGINT/SIGTERM)
+      if (global && global.isTerminating) {
+        console.log('🛑 Termination signal detected. Exiting market making loop...');
+        break;
+      }
       try {
+        // Check 12h cap for infinite mode
+        if (infiniteMode && Date.now() >= infiniteEndAt) {
+          console.log(`⏳ Reached 12-hour cap for infinite mode. Stopping market making.`);
+          break;
+        }
         // Check price and get action
         const priceAction = await this.priceMonitor.checkPriceAction();
         
@@ -528,7 +542,7 @@ export class MMBot {
         }
         
         // Enforce alternating logic for finite loops
-        if (config.loops !== null && config.loops !== Infinity && this.nextAction) {
+        if (config.loops !== null && this.nextAction) {
           if (this.nextAction === 'buy' && priceAction.action === 'sell') {
             console.log(`🔄 Waiting for buy signal (alternating logic)`);
             priceAction.action = 'hold';
@@ -601,12 +615,22 @@ export class MMBot {
           }
         }
         
-        // Wait for next check
-        await sleep(config.checkInterval * 1000);
+        // Wait for next check unless terminating
+        if (!(global && global.isTerminating)) {
+          await sleep(config.checkInterval * 1000);
+        } else {
+          console.log('🛑 Termination signal detected during wait. Exiting...');
+          break;
+        }
         
       } catch (error) {
         console.log(`❌ Error in market making: ${error.message}`);
-        await sleep(config.checkInterval * 1000);
+        if (!(global && global.isTerminating)) {
+          await sleep(config.checkInterval * 1000);
+        } else {
+          console.log('🛑 Termination signal detected after error. Exiting...');
+          break;
+        }
       }
     }
     

@@ -850,6 +850,11 @@ function setupIPCListeners() {
         
         const message = output.trim();
         
+        // DEBUG: Log all Snipe Bot messages
+        if (message.includes('[SNIPER:')) {
+            console.log('🔍 IPC RECEIVED SNIPER MESSAGE:', { message, botType, ticker, timestamp: new Date().toISOString() });
+        }
+        
         // Check if this is a transaction-related message we should always display
         const isTransactionRelated = (
             // Transaction execution and status indicators
@@ -929,6 +934,11 @@ function setupIPCListeners() {
             (message.includes('Getting token info for:') && !message.includes('💡')) ||
             (message.includes('Using default currency:') && !message.includes('💡'))
         );
+        
+        // DEBUG: Check if Snipe Bot messages are being filtered
+        if (message.includes('[SNIPER:') && shouldFilter) {
+            console.log('🚨 SNIPER MESSAGE FILTERED OUT:', { message, shouldFilter, timestamp: new Date().toISOString() });
+        }
         
         if (shouldFilter) {
             return; // Skip only very specific debug messages
@@ -1037,11 +1047,45 @@ function setupIPCListeners() {
     // Console window close handler - sync state when window is closed via X button
     ipcRenderer.on('console-window-closed', () => {
         consoleWindowOpen = false;
+        consoleWindowReady = false;
+        popupMessageQueue = [];
         updateToggleButtonText();
     });
     // Clear console request handler - sync clear from detailed window
     ipcRenderer.on('clear-console-request', () => {
         clearConsole();
+    });
+
+    // Console window ready handler - flush backlog to popup
+    ipcRenderer.on('console-window-ready', async () => {
+        consoleWindowReady = true;
+        try {
+            // First, send existing detailed console messages to the new window
+            if (detailedConsoleLines && detailedConsoleLines.length > 0) {
+                for (const line of detailedConsoleLines) {
+                    try {
+                        await ipcRenderer.invoke('send-console-message', line.fullMessage || line.message, line.type);
+                    } catch (e) {
+                        console.error('Error backfilling console window:', e);
+                        break;
+                    }
+                }
+            }
+            // Then flush any queued popup messages that arrived before readiness
+            if (popupMessageQueue && popupMessageQueue.length > 0) {
+                for (const item of popupMessageQueue) {
+                    try {
+                        await ipcRenderer.invoke('send-console-message', item.message, item.type);
+                    } catch (e) {
+                        console.error('Error sending queued popup message:', e);
+                        break;
+                    }
+                }
+                popupMessageQueue = [];
+            }
+        } catch (err) {
+            console.error('Console window ready handling failed:', err);
+        }
     });
 }
 
@@ -1227,13 +1271,13 @@ function selectBot(botType) {
     // Handle Token Selection panel visibility
     const tokenSelectionPanel = document.querySelector('.ticker-selection-panel');
     if (tokenSelectionPanel) {
-        if (botType === 'sellbot-fsh' || botType === 'jeetbot') {
+        if (botType === 'sellbot-fsh' || botType === 'jeetbot' || botType === 'snipebot') {
             // Hide token selection for FSH mode and JeetBot
             tokenSelectionPanel.style.display = 'none';
             if (botType === 'sellbot-fsh') {
             addConsoleMessage('💥 FSH Mode: Token selection disabled - will scan all wallets automatically', 'info');
             } else {
-                addConsoleMessage('🎯 JeetBot Mode: Token selection disabled - uses Genesis contract detection', 'info');
+                addConsoleMessage('🎯 Jeet/Snipe Mode: Token selection disabled - uses Genesis/ticker input', 'info');
             }
         } else {
             // Show token selection for other bots
@@ -1268,7 +1312,7 @@ async function runBot(botType, customArgs = null) {
     }
 
     // Utility bots that don't require ticker selection (including FSH mode)
-    const utilityBots = ['transferbot', 'stargate', 'contactbot', 'detect', 'ticker-search', 'ticker-fetch', 'ticker-export', 'ticker-runall', 'sellbot-fsh'];
+    const utilityBots = ['transferbot', 'stargate', 'contactbot', 'detect', 'ticker-search', 'ticker-fetch', 'ticker-export', 'ticker-runall', 'sellbot-fsh', 'snipebot'];
     
     if (utilityBots.includes(botType)) {
         // Handle utility bots separately
@@ -1340,6 +1384,9 @@ async function runBot(botType, customArgs = null) {
                         
                         // Change bot type to sellbot for execution
                         botType = 'sellbot';
+                        break;
+                    case 'snipebot':
+                        args = getSnipeBotArgs();
                         break;
                 }
             }
@@ -2131,6 +2178,23 @@ function addConsoleMessage(message, type = 'stdout') {
             timestamp: new Date().toISOString()
         });
     }
+
+    // Normalize Snipe Bot tagged messages: [SNIPER:LEVEL] Some message
+    try {
+        const sniperTagMatch = String(message).match(/^\[SNIPER:(INFO|SUCCESS|WARNING|ERROR)\]\s*/i);
+        if (sniperTagMatch) {
+            const level = sniperTagMatch[1].toUpperCase();
+            console.log('🎯 SNIPER MESSAGE DETECTED:', { originalMessage: message, level, timestamp: new Date().toISOString() });
+            // Strip the prefix for display
+            message = String(message).replace(/^\[SNIPER:(INFO|SUCCESS|WARNING|ERROR)\]\s*/i, '');
+            // Map level to our console type
+            if (level === 'SUCCESS') type = 'success';
+            else if (level === 'WARNING') type = 'warning';
+            else if (level === 'ERROR') type = 'error';
+            else type = 'stdout';
+            console.log('🎯 SNIPER MESSAGE PROCESSED:', { processedMessage: message, mappedType: type });
+        }
+    } catch {}
     
     // Always send to popup window first (detailed view gets everything)
     addMessageToPopup(message, type);
@@ -2239,6 +2303,11 @@ function addConsoleMessage(message, type = 'stdout') {
         }
     }
     
+    // Special handling: show exact "Tokens List Updated" as a styled success message
+    if (String(message).trim() === 'Tokens List Updated') {
+        processedMessage = `<span style="color: #56d364; font-weight: 500;">✅ Tokens List Updated</span>`;
+    }
+    
     // Check if this is a transaction success message that needs condensing
     if (message.includes('Success:') && message.includes('0x')) {
         const txHashMatch = message.match(/0x[a-fA-F0-9]{64}/);
@@ -2276,6 +2345,39 @@ function addConsoleMessage(message, type = 'stdout') {
             const amount = tokensMatch[1];
             const token = tokensMatch[2];
             processedMessage = `<span style="color: #56d364; font-weight: 500;">✓ RECEIVED</span> <span style="color: #58a6ff; font-weight: 600;">${amount} ${token}</span> <span style="color: #a5a5a5; font-size: 0.9em;">tokens received</span>`;
+        }
+    }
+    
+    // SNIPER Bot: concise start banner -> "SNIPER BOT" lines
+    if (message.includes('SNIPER BOT') && message.includes('PREBUILT')) {
+        // Extract ticker if available
+        const tickerMatch = message.match(/for\s+([A-Za-z0-9]+)/i);
+        const ticker = tickerMatch ? tickerMatch[1] : '';
+        processedMessage = `<span style="color: #56d364; font-weight: 600;">Starting Sniper Bot</span>${ticker ? ` <span style="color: #58a6ff; font-weight: 500;">for ${ticker}</span>` : ''}`;
+    }
+    
+    // SNIPER Bot: Token detected summary with Basescan address link
+    if (message.startsWith('Token detected:') && message.includes('0x')) {
+        const caMatch = message.match(/0x[a-fA-F0-9]{40}/);
+        if (caMatch) {
+            const ca = caMatch[0];
+            const short = `${ca.slice(0, 8)}...${ca.slice(-6)}`;
+            processedMessage = `<span style=\"color: #56d364; font-weight: 500;\">Token detected</span> <a href=\"https://basescan.org/token/${ca}\" target=\"_blank\" style=\"color: #58a6ff; text-decoration: none; font-weight: 600; border-bottom: 1px dotted #58a6ff;\">${short}</a>`;
+        }
+    }
+    
+    // SNIPER Bot: Scanning for target price
+    if (message.includes('Scanning for target price')) {
+        processedMessage = `<span style=\"color: #58a6ff; font-weight: 500;\">Scanning for target price...</span>`;
+    }
+    
+    // SNIPER Bot: TX sent -> clickable Basescan link
+    if (message.includes('SWAP TX SENT:') && message.includes('0x')) {
+        const txHashMatch = message.match(/0x[a-fA-F0-9]{64}/);
+        if (txHashMatch) {
+            const txHash = txHashMatch[0];
+            const short = `${txHash.slice(0, 8)}...${txHash.slice(-6)}`;
+            processedMessage = `<span style=\"color: #56d364; font-weight: 500;\">Success</span> <a href=\"https://basescan.org/tx/${txHash}\" target=\"_blank\" style=\"color: #58a6ff; text-decoration: none; font-weight: 600; border-bottom: 1px dotted #58a6ff;\">${short}</a> <span style=\"color: #a5a5a5; font-size: 0.9em;\">view on basescan</span>`;
         }
     }
     
@@ -2409,52 +2511,40 @@ function addConsoleMessage(message, type = 'stdout') {
         (message.includes('Progress: Loop') && message.includes('Starting farm cycle'))
     );
     
-    // Define essential messages for main console (simplified view)
+    // Define essential messages for main console (tight, summarized view)
     const isEssentialMessage = (
-        // Concise wallet status (only the nice formatted one)
+        // Concise wallet status
         (message.includes('✅ Loaded wallet:') && message.includes('ENV')) ||
         
-        // Bot selection and startup
-        // message.includes('Selected WALLETTOKEN') ||
-        // message.includes('Selected BUYBOT') ||
-        // message.includes('Selected SELLBOT') ||
+        // Bot start banners
         message.includes('Starting BUYBOT') ||
         message.includes('Starting SELLBOT') ||
-        message.includes('Starting FSH') ||
         message.includes('Starting FARMBOT') ||
         message.includes('Starting JEETBOT') ||
-        message.includes('Starting MM') ||
         message.includes('Starting MMBOT') ||
         message.includes('MMBOT - SINGLE TOKEN MARKET MAKING') ||
-        // MM bot specific token resolution (only allow for MM bot context)
-        (message.includes('Token resolved:') && message.includes('0x') && (message.includes('MM') || message.includes('Market Making'))) ||
-        message.includes('📊 MONITORING') ||
+        (message.includes('SNIPER BOT') && message.includes('PREBUILT')) ||
+        
+        // SNIPER: only show key milestones
+        message.startsWith('Token detected:') ||
+        message.includes('SWAP TX SENT:') ||
+        (message.includes('B') && message.includes(': swap sent')) ||
+        message.startsWith('Results:') ||
+        message.includes('Scanning for target price') ||
         
         // Core trading actions (condensed)
         (message.includes('Buying') && message.includes('VIRTUAL') && message.includes('Expected:')) ||
         (message.includes('Selling') && message.includes('Expected:')) ||
-        message.includes('FSH mode activated') ||
-        message.includes('TWAP mode activated') ||
         
-        // Loop and farming status (allow all LOOP formats that get styled)
+        // Loop and farming status (condensed)
         message.match(/LOOP \d+\/\d+/) ||
         message.match(/^LOOP \d+$/) ||
-        message.match(/^🔄 LOOP \d+$/) ||
-        message.match(/^🔄 BID-MODE LOOP \d+\/\d+$/) ||
         message.includes('🔄 LOOP') ||
-        message.includes('📍 Progress: Loop') ||
         (message.includes('LOOP') && message.includes('/') && message.includes('WALLET:')) ||
-        (message.includes('MM cycle') && message.includes('Price:')) ||
         
-        // Transaction results (condensed) - but exclude verbose details
-        (message.includes('CONFIRMED Block') && message.includes('Transaction mined')) ||
-        (message.includes('Actual tokens received:')) ||
+        // Transaction results (condensed)
         (message.includes('Success:') && message.includes('0x')) ||
-        (message.includes('✅ Success:') && message.includes('0x')) || // Handle emoji version
-        (message.includes('[Wallet') && message.includes('Success:') && message.includes('0x')) || // Handle wallet prefix
-        
-        // Sellbot-specific transaction results (only essential ones, redundant ones filtered above)
-        (message.includes('Sell complete:') && message.includes('VIRTUAL')) ||
+        (message.includes('✅ Success:') && message.includes('0x')) ||
         
         // Completion status
         message.includes('buybot completed successfully') ||
@@ -2462,25 +2552,14 @@ function addConsoleMessage(message, type = 'stdout') {
         message.includes('farmbot completed successfully') ||
         message.includes('jeetbot completed successfully') ||
         message.includes('mm bot completed successfully') ||
-        message.includes('FSH completed successfully') ||
         message.includes('No bot is currently running') ||
         
-        // Wallet validation warnings (essential for user feedback)
+        // Critical validation messages
         message.includes('No wallets configured') ||
         message.includes('Please select at least one wallet') ||
         message.includes('Please select at least one token') ||
-        
-        // TWAP validation errors (essential for user feedback)
-        message.includes('TWAP mode only supports single wallet execution') ||
-        message.includes('Bot startup cancelled due to validation error') ||
-        
-        // FarmBot and MMBot validation errors (essential for user feedback)
-        message.includes('FarmBot only supports one token at a time') ||
-        message.includes('MMBot only supports one token at a time') ||
-        
-        // JeetBot error messages (essential for user feedback)
-        (message.includes('🔍 Ticker "') && message.includes('" not found')) ||
-        (message.includes('🔍 Token contract address "') && message.includes('" is invalid'))
+        // Ensure token list refresh confirmation appears in console
+        (String(message).trim() === 'Tokens List Updated')
     );
     
     // DEBUG: Check success message filtering
@@ -4285,48 +4364,48 @@ function getJeetBotArgsForTicker(ticker) {
 }
 
 // Utility Bot Argument Functions
-function getTransferBotArgs() {
-    const token = document.getElementById('transfer-token').value.trim();
-    const amount = document.getElementById('transfer-amount').value.trim();
-    const receiver = document.getElementById('transfer-receiver').value.trim();
-    const gasPrice = document.getElementById('gas-price').value.trim();
+function getSnipeBotArgs() {
+    const targetInput = document.getElementById('snipe-target')?.value?.trim() || '';
+    const amountInput = document.getElementById('snipe-amount')?.value?.trim() || '';
+    const gasPrice = document.getElementById('gas-price')?.value?.trim();
 
-    // TransferBot format: <token> <amount> <receiver> [gas] [from:walletId]
-    
-    if (!token || !amount || !receiver) {
-        addConsoleMessage('Please fill in all required fields: token, amount, and receiver', 'error');
+    if (!targetInput) {
+        addConsoleMessage('❌ Please enter a Ticker or Contract Address', 'error');
+        return null;
+    }
+    if (!amountInput) {
+        addConsoleMessage('❌ Please enter an amount (per wallet)', 'error');
         return null;
     }
 
-    // Check if wallets are selected
-    if (selectedWallets.size === 0) {
-        addConsoleMessage('Warning: No wallets selected. Please select at least one wallet.', 'warning');
+    const args = [];
+
+    // Wallet selectors: use selected wallets from header only
+    if (!selectedWallets || selectedWallets.size === 0) {
+        addConsoleMessage('❌ Please select at least one wallet from the header', 'error');
         return null;
     }
-    
-    // Create the final argument list in the correct order:
-    // 1. First token, amount, receiver as TransferBot expects them
-    // 2. Optional gas price
-    // 3. Wallet selectors as additional arguments for main.js
-    
-    const args = [
-        // Required TransferBot arguments (must be first)
-        token,
-        amount,
-        receiver
-    ];
-    
-    // Gas price if specified
+    Array.from(selectedWallets)
+        .map(index => `B${index + 1}`)
+        .sort()
+        .forEach(w => args.push(w));
+
+    // Normalize target: if not address and not already G- prefixed, prefix with G-
+    let normalizedTarget = targetInput;
+    const looksLikeAddress = /^0x[0-9a-fA-F]{6,}$/.test(normalizedTarget);
+    if (!looksLikeAddress && !/^G-/i.test(normalizedTarget)) {
+        normalizedTarget = `G-${normalizedTarget}`;
+    }
+
+    // Add target and amount
+    args.push(normalizedTarget);
+    args.push(amountInput);
+
+    // Add gas price if specified
     if (gasPrice && gasPrice !== '0.02') {
         args.push(`gas${gasPrice}`);
     }
-    
-    // Add wallet selectors after main args
-    // Convert selected wallets to B1, B2, etc. format
-    Array.from(selectedWallets)
-        .map(index => `B${index + 1}`)
-        .forEach(walletSelector => args.push(walletSelector));
-    
+
     return args;
 }
 
@@ -4939,8 +5018,10 @@ function addDetailedConsoleMessage(message, type = 'stdout') {
     }
 }
 
-// Global variable to track console window state
+// Global variables to track console window state
 let consoleWindowOpen = false;
+let consoleWindowReady = false; // becomes true after 'console-window-ready'
+let popupMessageQueue = []; // messages to flush when ready
 
 function toggleLogView() {
     if (!consoleWindowOpen) {
@@ -4949,6 +5030,7 @@ function toggleLogView() {
     } else {
         // Close console window (handled by window close event)
         consoleWindowOpen = false;
+        consoleWindowReady = false;
         updateToggleButtonText();
     }
 }
@@ -4959,14 +5041,8 @@ async function openConsoleWindow() {
         const result = await ipcRenderer.invoke('create-console-window');
         if (result.success) {
             consoleWindowOpen = true;
+            consoleWindowReady = false; // wait for readiness signal
             updateToggleButtonText();
-            
-            // Send existing console messages to the new window
-            if (detailedConsoleLines && detailedConsoleLines.length > 0) {
-                for (const line of detailedConsoleLines) {
-                    await ipcRenderer.invoke('send-console-message', line.fullMessage || line.message, line.type);
-                }
-            }
         }
     } catch (error) {
         console.error('Error opening console window:', error);
@@ -4979,10 +5055,10 @@ async function addMessageToPopup(message, type = 'stdout') {
     if (!consoleWindowOpen) {
         return;
     }
-    
-    // Filter out specific error messages that shouldn't appear in detailed view
-    if (message.includes('Error initializing wallets: Cannot read properties of undefined (reading length)')) {
-        return; // Skip this specific error message
+    // If window open but not ready, buffer the message
+    if (!consoleWindowReady) {
+        popupMessageQueue.push({ message, type });
+        return;
     }
     
     try {
@@ -4991,6 +5067,7 @@ async function addMessageToPopup(message, type = 'stdout') {
         console.error('Error sending message to console window:', error);
         // If sending fails, the window might be closed
         consoleWindowOpen = false;
+        consoleWindowReady = false;
         updateToggleButtonText();
     }
 }
@@ -6358,6 +6435,10 @@ window.updateJeetRebuyPercentage = updateJeetRebuyPercentage;
 window.updateJeetRebuyInterval = updateJeetRebuyInterval;
 window.handleJeetModeChange = handleJeetModeChange;
 window.updateJeetGasPrice = updateJeetGasPrice; 
+
+// Expose console methods globally for modules/bots that call window.addConsoleMessage
+// This ensures summarized logs (e.g., from snipe-prebuilt) reach the mini console UI
+window.addConsoleMessage = addConsoleMessage;
 
 // Handle MMBot CHASE mode toggle
 function handleMMChaseToggle() {

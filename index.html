@@ -125,6 +125,11 @@
                         <span class="emoji-fallback">🚀</span>
                         <span class="text">JeetBot</span>
                     </button>
+                    <!-- <button class="nav-btn" data-bot="snipebot">
+                        <img src="assets/sniper.png" alt="SnipeBot Icon" class="icon">
+                        <span class="emoji-fallback">🎯</span>
+                        <span class="text">FastBuy Bot</span>
+                    </button> -->
                     
                     <!-- Ticker Tools -->
                     <button class="nav-btn" data-bot="detect">
@@ -812,6 +817,7 @@
                             </div>
                         </div>
 
+                        <!-- Keep Timing Settings hidden -->
                         <div class="form-section" style="display: none;">
                             <h5>⏰ Timing Settings</h5>
                             <div class="form-group">
@@ -830,7 +836,10 @@
                                 </div>
                                 <small>I-1 = Check every 1 minute, I-0.5 = Check every 30 seconds</small>
                             </div>
+                        </div>
 
+                        <!-- Show CHASE Mode control -->
+                        <div class="form-section">
                             <div class="form-group">
                                 <label class="checkbox-item">
                                     <input type="checkbox" id="mm-mode-chase" onchange="handleMMChaseToggle()">
@@ -1012,6 +1021,31 @@
                                 🚀 Start JeetBot
                             </button>
                         </div>
+                    </div>
+
+                    <!-- SnipeBot Form -->
+                    <div id="snipebot-form" class="bot-form">
+                        <div class="form-group1">
+                            <label for="snipe-target">Ticker or Contract Address</label>
+                            <input type="text" id="snipe-target" placeholder="e.g., TICKER or 0x..." class="form-input">
+                        </div>
+                        <div class="form-group1">
+                            <label for="snipe-amount">Amount (VIRTUAL per wallet)</label>
+                            <div class="amount-input-group">
+                                <input type="number" id="snipe-amount" placeholder="100" class="form-input" min="0" step="0.01">
+                                <select id="snipe-amount-preset" class="form-select preset-select" onchange="(function(){const v=document.getElementById('snipe-amount-preset').value;if(v) document.getElementById('snipe-amount').value=v;})()">
+                                    <option value="">Presets</option>
+                                    <option value="25">25 VIRTUAL</option>
+                                    <option value="50">50 VIRTUAL</option>
+                                    <option value="100">100 VIRTUAL</option>
+                                    <option value="200">200 VIRTUAL</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button class="btn btn-primary" onclick="runBot('snipebot')">🎯 Start FastBuy Bot</button>
+                        </div>
+                        
                     </div>
 
                     <!-- TransferBot Form -->

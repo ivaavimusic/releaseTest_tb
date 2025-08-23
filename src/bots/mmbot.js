@@ -186,6 +186,12 @@ export async function runMMBot(args) {
       mmbot.stop();
       process.exit(0);
     });
+    // Handle SIGTERM (Stop button or OS termination)
+    process.on('SIGTERM', () => {
+      console.log('\n\n🛑 Received termination signal...');
+      mmbot.stop();
+      process.exit(0);
+    });
     
     // Start market making
     await mmbot.start(config);

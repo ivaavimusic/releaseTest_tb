@@ -48,6 +48,37 @@ body.bid-mode-active #bid-ticker-selection {
     padding: 0 2px; /* Move much closer to left edge - minimal padding */
 }
 
+/* Refresh button next to search */
+.token-refresh-btn {
+    background: rgba(139, 157, 195, 0.15) !important;
+    border: 1px solid rgba(139, 157, 195, 0.4) !important;
+    color: #8b9dc3 !important;
+    height: 38px; /* Match search height */
+    min-width: 38px;
+    padding: 0 10px;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.token-refresh-btn i {
+    font-size: 16px;
+}
+
+.token-refresh-btn:hover:not(:disabled) {
+    background: rgba(139, 157, 195, 0.25) !important;
+    border-color: #8b9dc3 !important;
+    color: #ffffff !important;
+}
+
+.token-refresh-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 .token-search-container {
     position: relative;
     margin-bottom: 15px;
@@ -246,9 +277,21 @@ body.bid-mode-active #bid-ticker-selection {
     padding: 3px 8px;
     border-radius: 4px;
     font-size: 0.75rem;
-    background-color: rgba(139, 157, 195, 0.2) !important;
+    background-color: rgba(139, 157, 195, 0.2);
     font-weight: 500;
     letter-spacing: 0.5px;
+}
+
+/* Genesis label styling */
+.genesis-label {
+    background-color: rgba(76, 175, 80, 0.3) !important; /* Green background */
+    color: #e0f2e1 !important;
+}
+
+/* Sentient label styling */
+.sentient-label {
+    background-color: rgba(33, 150, 243, 0.3) !important; /* Blue background */
+    color: #e1f5fe !important;
 }
 
 .token-copy-btn {

@@ -2,97 +2,91 @@
   {
     "symbol": "DKING",
     "tokenAddress": "0x57edc3f1fd42c0d48230e964b1c5184b9c89b2ed",
-    "mcapInETH": 3333.124586688418,
+    "mcapInETH": 3349.7579089546434,
     "lpAddress": "0x0Faa729d56071E8780579f407bdCb5E0832D773E"
   },
   {
     "symbol": "A1C",
     "tokenAddress": "0x1f1c695f6b4a3f8b05f2492cef9474afb6d6ad69",
-    "mcapInETH": 1871.7136486066493,
+    "mcapInETH": 1821.48875802723,
     "lpAddress": "0x7Dc3662f4C2C41c5752652e8B417a9024c2B1f63"
   },
   {
     "symbol": "AION",
     "tokenAddress": "0xfc48314ad4ad5bd36a84e8307b86a68a01d95d9c",
-    "mcapInETH": 901.1145078981076,
+    "mcapInETH": 852.8561135057431,
     "lpAddress": "0xBa1963BB6c0D0d60Cea960AA37218d13b69503A1"
   },
   {
     "symbol": "KARUM",
     "tokenAddress": "0xf3280115245a7470e7bbdd35e2b4f4094f511443",
-    "mcapInETH": 1921.1530188676634,
+    "mcapInETH": 1908.7117781437407,
     "lpAddress": "0x4687Cb4ec3FA307660305B4AcD47024De6b5DDf2"
   },
   {
     "symbol": "AGENT",
     "tokenAddress": "0xd98832e8a59156acbee4744b9a94a9989a728f36",
-    "mcapInETH": 308.62187616538046,
+    "mcapInETH": 373.99373607990833,
     "lpAddress": "0x0162cCBE8961b9e33c788c463F4c9428333b2D6f"
   },
   {
     "symbol": "SHOGUN",
     "tokenAddress": "0xd63aaeec20f9b74d49f8dd8e319b6edd564a7dd0",
-    "mcapInETH": 297.0670282276181,
+    "mcapInETH": 309.47057431163074,
     "lpAddress": "0x23588d2d6a82E1e45BbAA5CB34A8ba666BA4748C"
   },
   {
     "symbol": "RIZZY",
     "tokenAddress": "0x3eea5eed99dd064c0629f18b8eea51270d5910eb",
-    "mcapInETH": 380.4710010594775,
+    "mcapInETH": 314.2340323931303,
     "lpAddress": "0xdE69DEa04110937C299F5d23C90FBAB10fec8c86"
   },
   {
     "symbol": "TAOLOR",
     "tokenAddress": "0x80f4d22aa2437fa0dd4634b505ac3668835d9b84",
-    "mcapInETH": 342.68049101403875,
+    "mcapInETH": 371.4203175385216,
     "lpAddress": "0xD958bb6F138aD8c0A1A7BAcA3f18E701fedbEB40"
   },
   {
     "symbol": "AGENT47",
     "tokenAddress": "0x3e176a1eafc6de7824301965887185e3408c76b6",
-    "mcapInETH": 233.424444631426,
+    "mcapInETH": 216.14381575057348,
     "lpAddress": "0xaf6Ae67Cfd51368DB512109d44e938c7DB57bA0b"
   },
   {
     "symbol": "BILLNYE",
     "tokenAddress": "0x53081b67c58e52097dfd34a5de1ccb0c5920ae3c",
-    "mcapInETH": 90.84850395232066,
+    "mcapInETH": 93.10362757822902,
     "lpAddress": "0xD63E2aAa8E623Fa89f7Ce56d6D8d99969008fdEA"
   },
   {
     "symbol": "SURF",
     "tokenAddress": "0xcdca2eaae4a8a6b83d7a3589946c2301040dafbf",
-    "mcapInETH": 357.1290832982654,
+    "mcapInETH": 332.6409613156988,
     "lpAddress": "0xB40440DE005c6Fa2d150B87715f961a795Cf3287"
   },
   {
     "symbol": "AICARTEL",
     "tokenAddress": "0xacc272516ffebaeeb32cb51cf9ffe746dd6a8998",
-    "mcapInETH": 136.49166604733176,
+    "mcapInETH": 134.5814903766284,
     "lpAddress": "0x314c2e17Dd702C183789006007fD17DaBAf6f24a"
   },
   {
     "symbol": "YUUKI",
     "tokenAddress": "0x277f301b1d7471ee948f801b1ff3575ad7f33e21",
-    "mcapInETH": 136.51598571502944,
+    "mcapInETH": 111.06019917790961,
     "lpAddress": "0x1248ec33E6b613767308E7a76dc8e1bfeC191c6f"
   },
   {
     "symbol": "EOLAS",
     "tokenAddress": "0xf878e27afb649744eec3c5c0d03bc9335703cfe3",
-    "mcapInETH": 78.49147286464223,
+    "mcapInETH": 99.08063253370968,
     "lpAddress": "0xF5211BA5aAD081f05386D45aC5fCF7f51c8Dbd77"
   },
   {
-    "symbol": "AETHR",
-    "tokenAddress": "0xb316e2469e32e4c782533d8dace9f70b2ad88557",
-    "mcapInETH": 78.11183715393943,
-    "lpAddress": "0x7D2df286eB2369adbDcd98A501DdBDe0838d60F2"
-  },
-  {
-    "symbol": "LAZY",
-    "tokenAddress": "0xe4da9889db3d1987856e56da08ec7e9f484f6434",
-    "mcapInETH": 52.88769049551274,
-    "lpAddress": "0x4356dd25897d8a804a7C7af024D27229D21d3bef"
+    "symbol": "ELI5A",
+    "tokenAddress": "0xd413485aa9ca4f88419904255a2384f667dddcab",
+    "mcapInETH": 70.44418118186806,
+    "lpAddress": "0xAA6b86Fd7309a08B6Fd93bf6f3A0EE8B39EEbffD"
   }
 ]
