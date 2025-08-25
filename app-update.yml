@@ -1,6 +1,6 @@
 provider: github
-owner: Degenapetrader
-repo: TRUST-BOT
+owner: ivaavimusic
+repo: releaseTest_tb
 publisherName: null
 updaterCacheDirName: trust-bot-updater
 allowDowngrade: true

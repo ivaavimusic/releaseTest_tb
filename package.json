@@ -4,6 +4,14 @@
   "description": "Desktop Trading Bot Interface for Virtuals Token Trading on Base Blockchain",
   "license": "AGPL-3.0",
   "main": "secureBootstrap.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ivaavimusic/releaseTest_tb.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ivaavimusic/releaseTest_tb/issues"
+  },
+  "homepage": "https://github.com/ivaavimusic/releaseTest_tb#readme",
   "scripts": {
     "start": "electron .",
     "clean-start": "taskkill /f /im electron.exe >nul 2>&1 || true && electron .",
@@ -96,8 +104,8 @@
     "productName": "TRUSTBOT",
     "publish": {
       "provider": "github",
-      "owner": "degenapetrader",
-      "repo": "TRUST-BOT",
+      "owner": "ivaavimusic",
+      "repo": "releaseTest_tb",
       "releaseType": "release",
       "publishAutoUpdate": true
     },

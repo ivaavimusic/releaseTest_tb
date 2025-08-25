@@ -16,8 +16,8 @@ if (app.isPackaged) {
   // Use the built-in GitHub provider configuration
   // This should match your package.json build.publish settings
   console.log('🔧 Configuring GitHub update feed');
-  console.log('  - Owner: Degenapetrader');
-  console.log('  - Repo: TRUST-BOT');
+  console.log('  - Owner: ivaavimusic');
+  console.log('  - Repo: releaseTest_tb');
   console.log('  - Current version:', app.getVersion());
 }
 
